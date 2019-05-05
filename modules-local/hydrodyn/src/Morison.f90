@@ -1194,23 +1194,27 @@ SUBROUTINE WriteSummaryFile( UnSum, MSL2SWL, WtrDpth, numNodes, nodes, numElemen
       
       
          ! Attach the external distributed buoyancy loads to the distributed mesh so they can be transferred to the WRP
-         
+      
+         ! Because of wave stretching and user-supplied waves, we may have loads above the still water line (SWL) which will be used
+         ! in the hydrodynamics for conditions where the wave height is > SWL.  So we now need to check that the vertical position
+         ! is <= SWL for this summary file calculation.
+      
       DO J = 1, outDistribMesh%Nnodes
-         
-         DO I=1,6
+         if ( outDistribMesh%Position(3,J) <= MSL2SWL ) then
+            DO I=1,6
             
-            IF (I < 4 ) THEN           
+               IF (I < 4 ) THEN
                
-               outDistribMesh%Force(I   ,J) = D_F_B(I,J) 
+                  outDistribMesh%Force(I   ,J) = D_F_B(I,J)
             
-            ELSE
+               ELSE
                
-               outDistribMesh%Moment(I-3,J) = D_F_B(I,J)
+                  outDistribMesh%Moment(I-3,J) = D_F_B(I,J)
                
-            END IF
+               END IF
             
-         END DO  ! DO I
-         
+            END DO  ! DO I
+         end if              ! <= MSL2SWL check
       END DO ! DO J
       
  
@@ -1226,23 +1230,27 @@ SUBROUTINE WriteSummaryFile( UnSum, MSL2SWL, WtrDpth, numNodes, nodes, numElemen
       
       
          ! Transfer the loads from the lumped mesh to the (0,0,0) point mesh
-         
+
+         ! Because of wave stretching and user-supplied waves, we may have loads above the still water line (SWL) which will be used
+         ! in the hydrodynamics for conditions where the wave height is > SWL.  So we now need to check that the vertical position
+         ! is <= SWL for this summary file calculation.
+
       DO J = 1, outLumpedMesh%Nnodes
-          
-         DO I=1,6
+         if ( outLumpedMesh%Position(3,J) <= MSL2SWL ) then 
+            DO I=1,6
             
-            IF (I < 4 ) THEN           
+               IF (I < 4 ) THEN           
                
-               outLumpedMesh%Force(I   ,J) = L_F_B(I,J) 
+                  outLumpedMesh%Force(I   ,J) = L_F_B(I,J)
             
-            ELSE
+               ELSE
                
-               outLumpedMesh%Moment(I-3,J) = L_F_B(I,J)
+                  outLumpedMesh%Moment(I-3,J) = L_F_B(I,J)
                
-            END IF
+               END IF
             
-         END DO  ! DO I
-         
+            END DO  ! DO I
+         end if              ! <= MSL2SWL check
       END DO ! DO J
       
          ! Remap for the lumped to WRP mesh transfer       
@@ -1272,9 +1280,9 @@ SUBROUTINE WriteSummaryFile( UnSum, MSL2SWL, WtrDpth, numNodes, nodes, numElemen
          
          DO I=1,6
             
-            IF (I < 4 ) THEN           
+            IF (I < 4 ) THEN
                
-               outDistribMesh%Force(I,J   ) = D_F_BF(I,J) 
+               outDistribMesh%Force(I,J   ) = D_F_BF(I,J)
                
             ELSE
                
@@ -1296,9 +1304,9 @@ SUBROUTINE WriteSummaryFile( UnSum, MSL2SWL, WtrDpth, numNodes, nodes, numElemen
          
          DO I=1,6
             
-            IF (I < 4 ) THEN           
+            IF (I < 4 ) THEN
                
-               outLumpedMesh%Force(I,J) = L_F_BF(I,J) 
+               outLumpedMesh%Force(I,J) = L_F_BF(I,J)
             
             ELSE
                
@@ -3769,7 +3777,7 @@ SUBROUTINE Morison_ProcessMorisonGeometry( InitInp, ErrStat, ErrMsg )
   
       ! Local variables
          
-   INTEGER                                      :: I    !, J, j1, j2, tempINT                ! generic integer for counting
+   INTEGER                                      :: I , J! j1, j2, tempINT                ! generic integer for counting
 !   TYPE(Morison_JointType)                      :: joint1, joint2                                   
 !   Real(ReKi)                                   :: z1
 !   Real(ReKi)                                   :: z2
@@ -3894,7 +3902,22 @@ SUBROUTINE Morison_ProcessMorisonGeometry( InitInp, ErrStat, ErrMsg )
             prop2Indx = temp
             InitInp%Elements(I)%InpMbrDist1         = 1.0
             InitInp%Elements(I)%InpMbrDist2         = 0.0
-            
+            ! --- Swap member coeffs if needed. 
+            ! Fine in this loop since there is a unique CoefMember per Member (otherwise we could swap them several times).
+            J = InitInp%InpMembers(I)%MmbrCoefIDIndx ! Index in CoefMembers table
+            IF (J>0) THEN 
+                ! NOTE: SWAP defined at the end of the current subroutine
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCd1    , InitInp%CoefMembers(J)%MemberCd2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCa1    , InitInp%CoefMembers(J)%MemberCa2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCp1    , InitInp%CoefMembers(J)%MemberCp2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberAxCa1  , InitInp%CoefMembers(J)%MemberAxCa2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberAxCp1  , InitInp%CoefMembers(J)%MemberAxCp2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCdMG1  , InitInp%CoefMembers(J)%MemberCdMG2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCaMG1  , InitInp%CoefMembers(J)%MemberCaMG2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberCpMG1  , InitInp%CoefMembers(J)%MemberCpMG2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberAxCaMG1, InitInp%CoefMembers(J)%MemberAxCaMG2)
+                CALL SWAP(InitInp%CoefMembers(J)%MemberAxCpMG1, InitInp%CoefMembers(J)%MemberAxCpMG2)
+            END IF 
          END IF
          
          propSet = InitInp%MPropSets(prop1Indx)
@@ -4019,7 +4042,14 @@ SUBROUTINE Morison_ProcessMorisonGeometry( InitInp, ErrStat, ErrMsg )
     !  p%NMorisonElements = 0
       
    END IF
-   
+   CONTAINS
+        SUBROUTINE SWAP(x1,x2)
+           Real(Reki),intent(inout) :: x1,x2
+           Real(Reki) :: tmp
+           tmp = x1
+           x1  = x2
+           x2  = tmp
+        END SUBROUTINE SWAP
 END SUBROUTINE Morison_ProcessMorisonGeometry
 
 !----------------------------------------------------------------------------------------------------------------------------------
